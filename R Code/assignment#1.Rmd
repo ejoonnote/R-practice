@@ -1,0 +1,176 @@
+---
+title: "Assingmet1"
+author: "LeeJoon Jeon"
+output:
+  html_document: 
+    highlight: pygments
+  pdf_document: default
+---
+
+<br/>
+
+### metro Dataset
+
+<br/>
+
+#### 1. 숭실대입구(살피재) 역의 11월 1일의 시간대별 승차 및 하차 인원 수를 하나의 그래프로 시각화해보자. 
+
+<br/>
+
+
+```{r message=FALSE}
+# 사용할 패키지 추가
+library(ggplot2)
+library(tidyr)
+library(dplyr)
+library(ggthemes)
+library(ggmap)
+```
+
+```{r graph1}
+# 데이터파일 읽기
+metro<-read.csv("metro.csv")
+str(metro)
+
+# 텍스트 형태의 날짜를 Date 객체로 변환
+metro$날짜 <- as.Date(metro$날짜)
+str(metro)
+
+# 2019년 11월 1일의 숭실대입구역 데이터만 추출
+metro_a1 <- subset(metro,역명=="숭실대입구(살피재)"&날짜=="2019-11-01")
+str(metro_a1)
+
+#gather을 이용해 여러 시간대와 인원수를 하나의 변수로 바꿈
+metro_a1 <- gather(metro_a1, key="time",value="count",X04...05:X03...04)
+str(metro_a1)
+
+#그래프 그리기
+ggplot(metro_a1, aes(x=time, y=count, fill=구분)) + geom_bar(stat='identity',position = position_dodge(preserve = "single")) + theme_minimal() + labs(x="시간대", y="인원 수", title="2019년 11월 1일 숭실대입구역 시간대별 승차 및 하차 인원 수") +  theme(axis.text.x = element_text(angle = 45, 
+ hjust = 1)) 
+```
+<br/>
+
+
+
+<br/>
+
+#### 2. 숭실대입구(살피재) 역의 11월 4일(월)부터 11월10일(일)까지 일주일간 각 요일별 시간대별 승차인원과 하차인원의 분포를 각각 heat map으로 시각화해보자.
+
+<br/>
+
+
+```{r graph2}
+# 2019년 11월 4일부터 10일까지 숭실대입구역 데이터 추출
+metro_a2 <- subset(metro,역명=="숭실대입구(살피재)"&날짜>="2019-11-04"&날짜<="2019-11-10")
+str(metro_a2)
+
+#gather을 이용해 여러 시간대와 인원수를 하나의 변수로 바꿈
+metro_a2 <- gather(metro_a2, key="time",value="count",X04...05:X03...04)
+str(metro_a2)
+
+# 승차,하차 데이터 추출
+metro_a2_s <- subset(metro_a2, 구분=="승차")
+str(metro_a2_s)
+metro_a2_h <- subset(metro_a2, 구분=="하차")
+str(metro_a2_h)
+
+# 각 요일별 시간대별 승차인원과 하차인원의 분포를 각각 heat map 그리기
+ggplot(metro_a2_s,aes(x=날짜, y=time, fill=count)) + geom_tile() + theme_minimal() + labs(x="날짜",y="시간대",title="2019년 11월 4일부터 2019년 11월 10일까지 일주일간 각 요일별 시간대별 승차인원") + scale_x_date(breaks="1 day")
+ggplot(metro_a2_h,aes(x=날짜, y=time, fill=count)) + geom_tile() + theme_minimal() + labs(x="날짜",y="시간대",title="2019년 11월 4일부터 2019년 11월 10일까지 일주일간 각 요일별 시간대별 하차인원") + scale_x_date(breaks = "1 day")
+```
+
+
+<br/>
+
+#### 3. 7호선의 모든 역 중에서 유동인구(월간 승하차 전체인원)가 가장 많은 20개 역에 대한 유동인구 수를 그래프로 시각화해보자.
+
+<br/>
+
+
+```{r graph3}
+
+# 7호선 데이터 추출
+metro_a3 <- subset(metro,호선=="7호선")
+str(metro_a3)
+
+#gather을 이용해 여러 시간대와 인원수를 하나의 변수로 바꿈
+metro_a3 <- gather(metro_a3,key="time", value="count",X04...05:X03...04)
+str(metro_a3)
+
+# 역명과 count 열 데이터 추출
+metro_a3 <- metro_a3[,c(5,8)]
+str(metro_a3)
+# 각 역 유동인구수 총합 구하기,aggregate() 함수 사용
+metro_a3 <- aggregate(x=metro_a3[-1], by=list(metro_a3$역명), sum)
+str(metro_a3)
+
+# 유동인구수가 많은 상위 20개역을 추출하기 위해
+# dplyr 패키지의 arrange() 함수 사용
+# 상위 20개 역 데이터를 추출
+metro_a3_ordered <- arrange(metro_a3, -count)
+str(metro_a3_ordered)
+metro_a3 <- metro_a3_ordered[1:20,]
+str(metro_a3)
+
+# 그래프 그리기
+ggplot(metro_a3, aes(x=reorder(Group.1, count),y=count)) + geom_bar(stat="identity") + coord_flip()
+
+```
+
+<br/>
+
+#### 4. 7호선 지하철역 위치 정보를 활용하여 7호선의 모든 역에 대한 유동인구 분포를 지도 위에 시각화해보자. 크기, 투명도 등을 활용하여 분포를 표현할 수 있다.
+
+<br/>
+
+```{r graph4}
+# 7호선 역 위도,경도 데이터 읽기
+metro_coord <- read.csv("metro_coord.csv")
+str(metro_coord)
+
+#7호선 데이터 추출
+metro_a4 <- subset(metro,호선=="7호선")
+str(metro_a4)
+
+#gather을 이용해 여러 시간대와 인원수를 하나의 변수로 바꿈
+metro_a4 <- gather(metro_a4, key="time",value="count",X04...05:X03...04)
+str(metro_a4)
+
+# 역명과 count 열 데이터 추출
+metro_a4 <- metro_a4[,c(5,8)]
+str(metro_a4)
+# aggregate() 함수 사용
+metro_a4 <- aggregate(x=metro_a4[-1], by=list(metro_a4$역명), sum)
+str(metro_a4)
+
+# 7호선 역의 최대,최소 latitude and logitude
+min(metro_coord$lon)
+max(metro_coord$lon)
+min(metro_coord$lat)
+max(metro_coord$lat)
+
+#latitude and logitude
+bbox <- c(left = 126.6, bottom=37.4, right=127.1, top=37.8)
+
+
+# get 7호선 map
+station <- get_stamenmap(bbox, zoom=10, maptype="terrain")
+ggmap(station)
+
+#열이름 변경
+metro_a4 <-rename(metro_a4,"역명"="Group.1")
+str(metro_a4)
+
+#데이터 셋 병합
+aa <- merge(metro_coord,metro_a4,by='역명')
+str(aa)
+
+
+# 그래프 그리기(크기)
+ggmap(station, base_layer = ggplot(data=aa, aes(x=lon, y=lat, size=count))) + geom_point(color="blue",alpha=.4) + theme_void() + labs(title="2019년 11월 7호선 모든 역 유동인구 분포", size="유동인구")
+
+# 그래프 그리기(투명도)
+ggmap(station, base_layer = ggplot(data=aa, aes(x=lon, y=lat, alpha=count))) + geom_point(color="blue",size=3) + theme_void() + labs(title="2019년 11월 7호선 모든 역 유동인구 분포", alpha="유동인구")
+
+```
+

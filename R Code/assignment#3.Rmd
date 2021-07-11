@@ -1,0 +1,350 @@
+---
+title: "Assingmet3"
+author: "LeeJoon Jeon"
+output:
+  html_document: 
+    highlight: pygments
+  pdf_document: default
+---
+
+<br/>
+
+### 
+
+<br/>
+
+#### 1. Year 및 Month를 제외한 9개의 변수들 간의 상관 관계를 다양한 그래프를 활용하여 시각화해보고, 이로부터 데이터의 특성을 분석해보자.
+
+<br/>
+
+
+```{r message=FALSE}
+# 사용할 패키지 추가
+library(corrplot)
+library(vip)
+library(leaps)
+library(caret)
+library(ggplot2)
+library(psych)
+library(glmnet)
+library(rsample)
+setwd('/Users/Administrator/Desktop/데분')
+```
+
+```{r graph1}
+# 데이터파일 읽기
+cc <- read.csv("ClimateChange.csv")
+str(cc)
+
+#상관관계 시각화1
+pairs.panels(cc[c("Temp","CFC.11","CFC.12","CO2","N2O","CH4","Aerosols","TSI","MEI")])
+
+#Year, Month 제거
+cc_1 <- cc[,-1:-2]
+str(cc_1)
+
+#상관관계 시각화2
+x <- cor(cc_1)
+corrplot(x)
+
+#상관관계 시각화3
+pairs(cc_1,panel=panel.smooth)
+
+```
+<br/>
+
+#####Aerosols은 Temp,CFC.11,CFC.12,CO2,N2O,CH4와 음의 상관관계를 가진다. MEI는 CFC.12,CO2,N2O,CH4,TSI와 약한 음의 상관관계를 가진다. 그 외에는 모두 양의 상관관계를 가지며 (Temp,CO2),(Temp,N2O),(Temp,CH4),(CFC.11,CFC.12),(CFC.11,cH4),(CFC.12,CO2),(CFC.12,N2O),(CFC.12,CH4),(CO2,N2O),(CO2,CH4),(N2O,CH4)는 강한 양의 상관관계를 가진다고 볼 수 있다. 
+
+
+<br/>
+
+#### 2. 2004년 이후의 데이터를 test set으로 2003년까지의 데이터를 training set으로 분할하자. 그리고 training set을 활용하여 linear regression model을 수립하자. 이때 8개의 feature변수를 모두 포함시킨다.
+
+<br/>
+
+
+```{r graph2}
+# year을 기준으로 데이터 분리
+cc_train <- cc[cc$Year < 2004,]
+cc_test <- cc[cc$Year > 2003,]
+str(cc_train)
+str(cc_test)
+
+#Year, Month 열 제거
+cc_train <- cc_train[,-1:-2]
+cc_test <- cc_test[,-1:-2]
+
+#linear regression model
+model <- lm(Temp ~., data=cc_train)
+summary(model)
+
+#어떤 feature 영향력이 큰지 시각화
+vip(model)
+```
+<br/>
+
+##### (a) MEI, Aerosols, TSI, CFC.11, CFC.12, CO2, N2O, CH4 순으로 큰 영향을 미친다고 볼 수 있다.
+
+##### (b) N2O, CFC.11 둘 다 음의 값을 가진다.일반적인 지식과 모순된 결과가 도출되는 이유는 feature들 간의 상관관계가 존재하고 여러개의 feature 사용 했기 때문에 위와 같은 결과가 나온 것으로 생각된다.
+
+
+<br/>
+
+### 3. MEI, TSI, Aerosols, N2O 4개의 feature만 사용하여 regression model을 만들어 보자
+
+<br/>
+
+
+```{r graph3}
+#regression model
+model_2 <- lm(Temp ~ MEI + TSI +Aerosols + N2O, data=cc_train)
+summary(model_2)
+
+#RMSE구하기
+cc_test_pred_1 <- predict(model, cc_test)
+RMSE(cc_test_pred_1, cc_test$Temp)
+cc_test_pred_2 <- predict(model_2,cc_test)
+RMSE(cc_test_pred_2, cc_test$Temp)
+```
+<br/>
+
+##### (a) N2O 변수의 coefficient 값이 2번 문제에서는 -2.525e-02가 나온 반면에 이번에는 2.524e-02이 나왔다. 즉, 2번 모델에서는 N2O가 증가할수록 Temp는 감소하지만 3번 모델에서는 증가한다는 것을 알 수 있다.  2번과 다른 결과가 나온 이유로는 2번과 비교했을 때 feature의 개수를 줄였기 때문에 다른 값이 나온 것 같다. 
+
+##### (b) 2번 모델의 R^2= 0.7133, adjusted R^2=0.7037, RMSE=0.08439069 이다. 3번 모델의 R^2=0.6799, adjusted R^2=0.6747, RMSE=0.08501107 이다. R^2과 adjusted R^2값은 2번 모델이 3번 모델보다 높고 RMSE는 낮다. 따라서 2번 모델이 설명력이 더 뛰어나고 test set error가 낮으므로 3번 모델보다는 2번 모델이 좋은 모델이라고 할 수 있을 것 같다.
+
+
+<br/>
+
+### 4. 8개의 feature를 대상으로 cross validation을 활용한 stepwise variable selection을 수행해보자. 
+
+<br/>
+
+```{r graph4}
+cv <- trainControl(method="repeatedcv", number=10, repeats =10)
+set.seed(123)
+
+#Foward selection
+fwd_model <- train(Temp ~.,data=cc_train, method="leapForward", tuneGrid=data.frame(nvmax=1:8), trControl= cv)
+
+fwd_model$results
+fwd_model$bestTune
+
+#fwd_model시각화
+ggplot(fwd_model$results, aes(x=nvmax, y=RMSE)) + geom_point() + geom_line() + theme_bw()
+
+#nvmax가 bestTune일 때 cofficient 구하기
+coef_fwd_cv <- coef(fwd_model$finalModel, fwd_model$bestTune$nvmax)
+coef_fwd_cv
+
+# test RMSE구하기
+test_pred_fwd <- predict(fwd_model, cc_test)
+RMSE(test_pred_fwd, cc_test$Temp)
+
+#Backward selection
+set.seed(123)
+bwd_model <- train(Temp ~.,data=cc_train, method="leapBackward", tuneGrid=data.frame(nvmax=1:8), trControl=cv)
+
+bwd_model$result
+bwd_model$bestTune
+
+#bwd_model 시각화
+ggplot(bwd_model$results, aes(x=nvmax, y=RMSE)) + geom_point() + geom_line() + theme_bw()
+
+#nvmax가 bestTune일 때 cofficient 구하기
+coef_bwd_cv <- coef(bwd_model$finalModel, fwd_model$bestTune$nvmax)
+coef_bwd_cv
+
+#test RMSE 구하기
+test_pred_bwd <- predict(bwd_model, cc_test)
+RMSE(test_pred_bwd, cc_test$Temp)
+
+#bestTune인 nvmax=7일 때 best model
+final_reg <- regsubsets(Temp~.,data=cc_1, nvmax=8,method="forward")
+coef_final <- coef(final_reg,7)
+coef_final
+
+
+```
+
+<br/>
+
+##### (a) Foward selection과 Backward selection 둘 다 10-fold cross validation을 10번 반복했고 nvmax=7인  model이 cross-validated RMSE값이 가장 작았다. 이 때 test RMSE는 0.08359067이다.
+
+##### (b) 그래프를 보면 nvmax=7일때랑 nvmax=8일때 RMSE 값이 큰 차이가 나지 않는 것을 볼 수 있다. Prediction accuracy 관점에서모델에 포함된 featuer의 수가 너무 적으면 underfitting, 너무 많으면 overfitting의 문제점이 있다. Model interpretability의 관점에서 보면 feature의 수가 적을수록 좋은 모델이라고 판단할 수 있다. 따라서 이 두 관점을 종합하면 nvmax=7 일 때가 가장 좋은 모델이라고 생각했고 best model 구했다.
+
+
+<br/>
+
+### 5. Prediction accuracy를 높이기 위해, 기존 8개의 feature들 외에 feature들 사이의 모든 interaction effect, 그리고 CO2, CFC.11, CFC.12의 제곱항들을 모두 추가한 모델을 대상으로 cross validation을 활용한 stepwise variable selection을 수행해보자.  
+
+<br/>
+
+
+```{r graph5}
+
+#Forward selection
+set.seed(123)
+fwd_model_2 <- train(Temp ~ (.)^2 +I(CO2^2) + I(CFC.11^2) + I(CFC.12^2), data=cc_train, method="leapForward", tuneGrid=data.frame(nvmax=1:39), trControl=cv)
+
+fwd_model_2$results
+fwd_model_2$bestTune
+
+#Foward selection model 시각화
+ggplot(fwd_model_2)
+
+#nvmax가 bestTune일 때 cofficient 구하기
+coef_fwd_2_cv <- coef(fwd_model_2$finalModel,fwd_model_2$bestTune$nvmax)
+coef_fwd_2_cv
+
+#Foward model test RMSE
+test_pred_fwd_2 <- predict(fwd_model_2, newdata=cc_test)
+RMSE(test_pred_fwd_2, cc_test$Temp)
+
+#Backward selection
+set.seed(123)
+bwd_model_2 <- train(Temp ~ (.)^2 +I(CO2^2) + I(CFC.11^2) + I(CFC.12^2), data=cc_train, method="leapBackward", tuneGrid=data.frame(nvmax=1:39), trControl=cv)
+
+bwd_model_2$results
+bwd_model_2$bestTune
+
+#Backward selection model 시각화
+ggplot(bwd_model_2)
+
+#nvmax가 bestTune일 때 cofficient 구하기
+coef_bwd_2_cv <- coef(bwd_model_2$finalModel,bwd_model_2$bestTune$nvmax)
+coef_bwd_2_cv
+
+#Backward model test RMSE
+test_pred_bwd_2 <- predict(bwd_model_2, newdata=cc_test)
+RMSE(test_pred_bwd_2, cc_test$Temp)
+
+#nvmax=13일때 best model
+final_reg_2 <- regsubsets(Temp ~ (.)^2 +I(CO2^2) + I(CFC.11^2) + I(CFC.12^2),data=cc_1, nvmax=39,method="forward")
+coef_final_2 <- coef(final_reg_2,13)
+coef_final_2
+```
+<br/>
+
+##### (a) Foward selection과 Backward selection 둘 다 10-Fold cross validation을 10번 반복했고 nvmax=13일 때 cross-validated RMSE값이 가장 작았다.
+
+##### (b)  Foward model의 cross-validated RMSE값은 0.08523035, Backward model은 0.08626809이다.따라서 가장 낮은 Cross validated RMSE값을 가지는 model은 Foward selection model이다. 이때 best model에 속한 변수는 MEI,TSI,(MEI:CO2),(MEI:CFC.11),(CO2:CH4),(CO2:N2O),(CO2:CFC.12),(CO2:Aerosols),(CH4:CFC.11),(CH4:Aerosols),(CFC.11:CFC.12),(CFC.11:Aerosols),(CFC.12:Aerosols)이다.
+
+
+<br/>
+
+#### 6.  2, 3, 4, 5번에서 수립된 4개의 모델에 대해서 test set (2004년 이후 데이터)에 대한 prediction accuracy(RMSE)를 비교해 보자. 예상한 대로 결과가 나오는가? 그렇지 않다면 그 원인은 무엇일지 분석해보자.
+
+<br/>
+#####  2번 모델의 RMSE은 0.08439069, 3번 모델은 0.08501107, 4번 모델은 0.08359067, 5번 모델은0.09242062이다. RMSE값이 작을수록 좋은 모델인데 처음에는 featuer의 수가 가장 작은 3번 모델이 RMSE값이 가장 작을 것이라고 생각했다. 하지만 내 생각과는 다르게 4번 모델이 가장 작은 값을 가졌다. 이는 교차검증을 통해 정확도를 높였기 때문이라고 생각했다. 하지만 5번 모델에도 교차검증 사용했는데 5번 모델의 RMSE값이 가장 높은게 의문이었다. 이러한 결과가 나온 이유로 5번 모델에 feature의 수가 다른 모델들과 비교 했을 때 상대적으로 많았기 때문이라고 생각을 했다.
+
+
+<br/>
+
+## 2. Regression on Simulated Data
+
+
+<br/>
+
+### 1. X, X^2, ...., X^10 의 10개 변수를 feature로, y를 target으로 설정하자. 이때 feature 변수들과 target 변수 사이의 상관관계를 시각화해보자.
+
+```{r graph6}
+#vector x 생성
+set.seed(123)
+x <- rnorm(200,0,1)
+
+#vector e 생성
+set.seed(1)
+e <- rnorm(200,0,4)
+
+#target vector y 생성
+y <- 1+2*x-3*x^2+4*x^3+e
+
+#dataframe 만들기
+dat <- data.frame(y,x,x^2,x^3,x^4,x^5,x^6,x^7,x^8,x^9,x^10)
+str(dat)
+
+#시각화
+pairs.panels(dat)
+
+```
+<br/>
+
+
+
+<br/>
+
+### 2. 10개의 feature를 모두 포함하는 linear regression model을 만들어보자. 통계적으로 유의한 변수가 있는가? regression coefficient 값을 실제 값과 비교해보자. 
+
+<br/>
+
+
+```{r graph7}
+#linear regression
+model <- lm(y ~., data=dat)
+summary(model)
+```
+<br/>
+####  x^2이 통계적으로 유의한 변수이다. regression coefficient 베타값과 실제 베타값을 다른 것을 볼 수 있다. 하지만 x^7, x^9, x^10의 regression coefficient 베타값 각각 0.008902,0.015640,-0.018050이 실제 베타값인 0과 비슷하다고 생각된다.
+
+
+
+<br/>
+
+### 3. X, X^2, X^3 3개  변수를 feature로, 를 target으로 linear regression model을 만들어보자. 모든 feature들이 통계적으로 유의한가? regression coefficient 값을 실제 값과 비교해보자. 
+
+<br/>
+
+
+```{r graph8}
+#linear regression
+model_2 <- lm(y ~ x + x.2 + x.3, data=dat)
+summary(model_2)
+```
+<br/>
+####  x, x^2, x^3 모두 통계적으로 유의한 변수이다.regression coefiicient 베타0~3까지 값이 1.2627,2.1411,-3.1464,4.0381 나왔고 실제 베타0~3까지 값인 1,2,-3,4와 비슷했다.
+
+
+<br/>
+
+#### 4. X, X^2, X^3…, X^10의 개 변수를 feature로, 를 target으로 Lasso regression model을 만들어 본다. Cross validation으로 최적의 모델을 찾아보자. 이 모델에는 어떤 변수가 포함되었는가? regression coefficient 값을 실제 값과 비교해보자. 그리고 결과를 바탕으로 Lasso regression의 효과에 대해서 설명해보자.
+
+<br/>
+
+```{r graph9}
+#data split
+set.seed(123)
+split <- initial_split(dat,prop=0.7,strara="y")
+dat_train <- training(split)
+dat_test <- testing(split)
+
+x <- model.matrix(y~.,data=dat_train)[,-1]
+y <- dat_train$y
+
+#lasso regression CV
+set.seed(3)
+lasso <-cv.glmnet(x=x,y=y,alpha=1,nfold=10)
+plot(lasso)
+
+#최소 MSE를 가지게 하는 best lamda
+best_lamda_lasso <- lasso$lambda.min
+best_lamda_lasso
+
+#dat dataset에 대한 best lamda model의 성능 평가
+testX <- model.matrix(y~.,dat_test)[,-1]
+lasso_pred <- predict(lasso, s=best_lamda_lasso,newx=testX)
+
+#RMSE계산
+RMSE(lasso_pred, dat_test$y)
+
+#best lamda를 가지는 lasso regression model
+fullX <- model.matrix(y~., dat)[,-1]
+fullY <- dat$y
+
+lasso_full <- glmnet(x=fullX, y=fullY, alpha=1)
+dim(coef(lasso_full))
+predict(lasso_full, s=best_lamda_lasso, type="coefficients")[1:11,]
+
+```
+
+<br/>
+#### 이 모델에는 x, x^2, x^3, x^5, x^7, x^9 feature가 포함되어 있다. x^4, x^6, x^8, x^10의 coefficient 값이 0이 므로 포함이 안되었다고 볼 수 있다. x^5, x^7, x^9의 coefficient의 값은 매우 작으므로 실제 베타값인 0과 비슷하다고 볼 수 있을거 같다. regression coefficient 베타 0~3까지 값이 각각 1.2778625479,2.6002854566, -3.1433486951, 3.7563233700으로 실제 베타값이 1,2,-3,4와 비슷하다고 볼 수 있다. lasso regression을 사용함으로써 variable selection 효과가 있어 feature의 수를 줄일 수 있었다.

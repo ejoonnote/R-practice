@@ -1,0 +1,455 @@
+---
+title: "Assingmet4"
+author: "LeeJoon Jeon"
+output:
+  html_document: 
+    highlight: pygments
+  pdf_document: default
+---
+
+<br/>
+
+###
+
+<br/>
+
+## 1. Predicting Delayed Flights
+
+<br/>
+
+### 1. 다음의 순서로 data preprocessing을 진행하자.
+
+
+```{r message=FALSE}
+# 사용할 패키지 추가
+setwd('/Users/Administrator/Desktop/데분')
+```
+
+
+```{r graph1}
+#데이터 읽기
+fr <- read.csv("FlightRecords.csv")
+str(fr)
+
+#출발시간 6시 이전 22시 이후 데이터 삭제
+fr_pre <- subset(fr, fr$deptime >=600)
+fr_pre <- subset(fr_pre, fr_pre$deptime <2200)
+str(fr_pre)
+
+#출발시각을 범주형 변수로 변환
+fr_pre$deptime <- floor(fr_pre$deptime/100)
+str(fr_pre)
+fr_pre$deptime <- factor(fr_pre$deptime)
+str(fr_pre)
+
+#dayweek, weather factor로 변환
+fr_pre$weather <- factor(fr_pre$weathe)
+fr_pre$dayweek <- factor(fr_pre$dayweek)
+str(fr_pre)
+
+#delay변수가 가지는 level의 순서를 "ontime","delay"순으로 변환
+fr_pre$delay <- factor(fr_pre$delay, levels = c("ontime", "delayed"))
+str(fr_pre)
+```
+
+<br/>
+
+<br/>
+
+### 2. 요일 별 연착비율, 출발 시간대 별 연착 비율, 출발 공항 별 연착비율, 도착 공항 별 연착 비율, 항공사 별 연착비율, 날씨 별 연착 비율을 각각 그래프로 시각화해보자. 어떤 특성을 관찰할 수 있는가?
+
+<br/>
+
+```{r graph2}
+library(ggplot2)
+#요일별 연착비율
+ggplot(fr_pre, aes(x=factor(dayweek,levels=c("1","2","3","4","5","6","7"), labels=c("Mon","Tue","Wed","Thur","Fri","Sat","Sun")),fill=delay)) + geom_bar(position="fill") + labs(x="dayweek",y="Proportion")
+#출발 시간대 별 연착 비율
+ggplot(fr_pre, aes(x=deptime, fill=delay)) + geom_bar(position="fill") + labs(y="Proportion")
+#출발 공항 별 연착 비율
+ggplot(fr_pre, aes(x=origin, fill= delay)) + geom_bar(position="fill") + labs(y="Proportion")
+#도착 공항 별 연착 비율
+ggplot(fr_pre, aes(x=dest, fill=delay)) + geom_bar(position="fill") + labs(y="Proportion")
+#항공사 별 연착 비율
+ggplot(fr_pre, aes(x=carrier,fill=delay)) + geom_bar(position="fill") +labs(y="Proportion")
+#날씨 별 연착 비율
+ggplot(fr_pre, aes(x=factor(weather,levels=c("0","1"), labels=c("Ok","Bad")), fill=delay)) + geom_bar(position="fill") + labs(x="weather",y="Proportion")
+```
+
+<br/>
+
+#### 1)요일별 연착비율에서 월요일과 토요일에는 0.25가 넘는 연착비율을 가지며 나머지 요일에서는 0.25보다 낮은 값을 가진다. 그 중 토요일이 가장 연착 비율이 낮은걸 알 수 있다.
+#### 2)출발 시간대별 연착 비율을 보면 일반적으로 출발시간이 늦을수록 연착되는 비율이 증가하는 모습이다. 출발시간 19시대인 비행기에서 연착비율이 가장 높으며 12시대에 연착비율이 가장 낮다.
+#### 3)출발 공항별 연착 비율을 보면 출발 공항인 DCA,IAD,BWI 세 곳 모두 큰 차이는 보이지 않는다. 굳이 비교를 하자면 BWI에서 연착비율이 0.25를 넘고 가장 큰 비율을 가지며 DCA에서 가장 낮은 비율을 가진다.
+#### 4) 도착 공항별 연착 비율을 보면 도착 공항인 EWR,JFK,LGA 세 곳 모두 연착 비율이 0.25보다 낮은 값을 가진다. 세 곳 모두 큰 차이는 없으며 EWR이 근소한 차이로 가장 높은 연착비율을 가지고 LGA가 가장 낮은 연착비율을 가진다.
+#### 5) 항공사별 연착 비율을 보면 CO,MQ항공사가 0.25를 넘는 연착비율을 보이고 있다. 그 외에 나머지 항공사는 0.25보다 낮은 연착비율을 보이며 특히 DL,OH,US항공사는 0.1대의 연착 비율을 가지고 있다. MQ항공사가 가장 높은 연착비율을 가지며 US항공사가 가장 낮은 연착비율을 가진다.
+#### 6)날씨별 연착 비율을 보면 날씨가 좋지 않은 날은 모두 비행기가 연착되는 것을 볼 수 있다. 날씨가 좋을 때는 0.25보다 낮은 비율로 비행기가 연착된다.
+
+
+
+<br/>
+
+### 3. 7개의 모든 변수들 간의 상관관계를 시각화해보자. 어떤 특성을 관찰할 수 있는가?
+
+<br/>
+
+```{r message=FALSE}
+#필요없는 변수 제거
+fr_pre <- subset(fr_pre, select = -c(schedtime, distance, date, flightnumber, daymonth, tailnu))
+str(fr_pre)
+```
+
+```{r graph3}
+library(psych)
+#상관관계
+pairs.panels(fr_pre)
+table(fr_pre$delay)
+```
+
+<br/>
+
+#### 전체적으로 보면 강한 상관관계를 가지고 있는 변수가 없다. 이 중 가장 높은 상관관계를 가지는 변수는 carrier와 origin이며 -0.4로 음의 상관관계를 가진다. dest와 weather, origin과 dayweek 아예 상관관계가 존재하지 않는다고 볼 수 있다.
+
+<br/>
+
+### 4. 데이터셋을 70:30 비율로 training set과 test set으로 분할하자. 이때 stratified sampling을 활용하여 두 set에서 delay 변수의 분포가 크게 차이가 없도록 분할하자
+
+<br/>
+
+```{r graph4}
+#stratified smapling 활용하여 test set, training set 분할. 
+library(rsample)
+set.seed(123)
+tr <- initial_split(fr_pre, prop = 0.7, strata = "delay")
+train <- training(tr)
+test <- testing(tr)
+
+table(train$delay)
+table(test$delay)
+```
+
+<br/>
+
+#### training set 에는 ontime 1225개, delayed 287개, test set에는 ontime 525개, delayed 122개 분류되었다.
+
+
+<br/>
+
+### 5. 데이터시각화로부터 weather 변수가 “Bad” 인 경우에는 항상 항공기가 연착되는 것을 관찰할 수 있다. 따라서 weather가 Bad이면 항공기가 연착되고, weather가 OK일 경우 항공기가 연착되지 않는 것으로 예측하는 단순한 모델을 baseline model이라 하자. Test set에 대해 baseline model을 적용했을 때 confusion matrix를 계산해 보세요.
+
+```{r graph5}
+#baseline model
+library(caret)
+pred_base <- factor(sign(test$weather=="1"), levels=c(0,1), labels = c("ontime","delayed"))
+confusionMatrix(pred_base, test$delay ,positive="delayed")
+```
+
+<br/>
+
+#### basline model의 Accuracy: 0.8284, Sensitivity: 0.09016, Specificity: 1이다. 특히 basline model에서 실제 ontime일 때 delayed로 예측한 경우가 없다는 것이 눈에 가장 띄었다. 반면에 실제 delayed일 때 ontime이라고 예측한 경우는 111건이나 있었다.
+
+
+
+<br/>
+
+### 6. Training set을 대상으로, 연착여부(delay)를 나머지 모든 변수를 사용하여 예측하기 위한 logistic regression model을 수립해보자.
+
+<br/>
+
+```{r graph6}
+#6-1logistic regression model 
+model <- glm(delay~., data=train, family="binomial")
+summary(model)
+
+#6-2날씨에 문제가 없는 금요일 15시에 IAD에서 출발하여 JFK로 도착한 Delta 항공기가 연착될 확률
+weather <- c("0")
+dayweek <- c("5")
+deptime <- c("15")
+origin <- c("IAD")
+dest <- c("JFK")
+carrier <- c("DL")
+cc <- data.frame(weather, dayweek, deptime, origin, dest, carrier)
+str(cc)
+
+
+predict(model,cc,type="response")
+
+#6-3
+#Threshold k=0.2
+p <- predict(model, test, type="response")
+O_or_B <- ifelse(p>0.2, "delayed","ontime")
+p_class <- factor(O_or_B, levels = levels(test$delay))
+confusionMatrix(p_class, test$delay, positive="delayed")
+
+
+#Threshold k=0.3
+O_or_B <- ifelse(p>0.3,"delayed","ontime")
+p_class <- factor(O_or_B, levels = levels(test$delay))
+confusionMatrix(p_class, test$delay, positive="delayed")
+
+#Threshold k=0.5
+O_or_B <- ifelse(p>0.5,"delayed","ontime")
+p_class <- factor(O_or_B, levels = levels(test$delay))
+confusionMatrix(p_class, test$delay, positive="delayed")
+
+#Threshold k=0.7
+O_or_B <- ifelse(p>0.7,"delayed","ontime")
+p_class <- factor(O_or_B, levels = levels(test$delay))
+confusionMatrix(p_class, test$delay, positive="delayed")
+
+
+
+```
+
+<br/>
+
+#### 6-1. deptime19의 regression coefficient에 대한 추정값은 2.57044이다. 다른 deptime변수들과 비교했을때 가장 큰 값으로 19시시간대의 비행기가 연착비율이 높을 것이다.
+#### 6-2. 문제가 없는 금요일 15시에 IAD에서 출발하여 JFK로 도착한 Delta 항공기가 연착될 확률은 0.3226365이다.
+#### 6-3. Threshold가 커질수록 Sensitiviy는 감소했고 Specificity는 증가했다. Threshold가 0.5일 때 최대 Accuracy를 가졌다. 
+Threshold              |Accuracy   |Sensitivity |Specificity
+-----------------------|---------- |----------  |---------
+k=0.2                  | 0.7094    |0.6311      |0.7276
+k=0.3                  | 0.7867    |0.4672      |0.8610 
+k=0.5                  | 0.8485    |0.24590     |0.98857
+k=0.7                  | 0.8377    |0.13934     |1.00000
+
+#### 6-4. Basline model의 Accuracy가 0.8284로 Threshold k=0.5보다 작은 logistic regression model들의 Accuracy보다 높고 Threshold k=0.5이상의 logistic regression model의 Accuracy보다는 낮다. 간단한 Baseline model의 성능이 크게 나쁘다고 볼 수는 없지만 logistic regression model은 Threshold 값에 따라 Accuracy가 향상된다.
+Model                  |Accuracy   |Sensitivity |Specificity
+-----------------------|---------- |----------  |---------
+Baseline model         | 0.8284    |0.09016     |1.00000
+Threshold(k=0.2)       | 0.7094    |0.6311      |0.7276
+Threshold(k=0.3)       | 0.7867    |0.4672      |0.8610 
+Threshold(k=0.5)       | 0.8485    |0.24590     |0.98857
+Threshold(k=0.7)       | 0.8377    |0.13934     |1.00000
+
+
+<br/>
+
+### 7. Training set을 대상으로, step() 함수를 활용한 backward stepwise selection을 적용하여 logistic regression model을 수립해보자.
+
+<br/>
+
+```{r graph7}
+#backward stepwise selection
+model_step <- step(model, direction="backward")
+coef(model_step)
+
+#Threshold k=0.5
+prob_step <- predict(model_step,test, type="response")
+pred_step <- rep("ontime",647)
+pred_step[prob_step>0.5] <- "delayed"
+confusionMatrix(factor(pred_step),test$delay, positive="delayed")
+```
+
+<br/>
+
+#### 7-1. carrierDH, carrierDL, carrierMQ, carrierOH, carrierRU, carrierUA, carrierUS, deptime7, deptime8, deptime9, deptime10, deptime11, deptime12, deptime13, deptime14, deptime15, deptime16, deptime17, deptime18, deptime19, deptime20, deptime21, originDCA, originIAD, weather1, dayweek2, dayweek3, dayweek4, dayweek5, dayweek6, dayweek7로 변수는 31개이다.
+
+#### 7-2. Accuracy: 0.8454, Sensitivity: 0.2623, Speicificity: 0.98095이다. ontime으로 예측한 것 중에 515개가 맞았고 90개가 실제 delayed로 틀렸다. delayed로 예측한 것 중에 32개가 맞았고 10개가 실제 ontime으로 틀렸다.
+
+
+<br/>
+
+### 8. Training set을 대상으로 Lasso regression을 적용하여 logistic regression model을 수립해보자. CV의 결과 바탕으로 모델에 포함되는 feature의 수와 예측정확도를 모두 고려했을 때 적합한 모델을 선택하자.
+
+```{r graph8}
+library(glmnet)
+#feature matrix 생성
+trainX <- model.matrix(delay~., data=train)[,-7]
+trainY <- train$delay
+
+#lasso regression
+set.seed(23)
+lasso_model <- glmnet(x=trainX, y=trainY, alpha=1, family="binomial")
+plot(lasso_model, xvar="lambda", label=TRUE)
+
+#cross validaion
+set.seed(23)
+cv_lasso <- cv.glmnet(x=trainX, y=trainY, alpha=1, family="binomial",type.measure = "auc",nfold=10)
+plot(cv_lasso)
+
+#AUC값이 크고 변수의 개수가 적다고 판단되는 곳은 변수가 15개일 때
+
+
+#cv에 사용된 lambda
+cv_lasso$lambda
+#nonzero 변수의 수
+cv_lasso$nzero
+#performace measure
+cv_lasso$cvm
+
+#변수의 개수가 15개일 때 lambda값
+lam <- cv_lasso$lambda[21]
+
+
+#15개의 변수 확인
+coef(cv_lasso, s=lam)
+#test set에 대한 delayed 확률 예측
+pred_prob <- predict(cv_lasso, newx=model.matrix(delay~., data=test)[,-7], s=lam, type="response")
+#test set에 대한 delayed 여부 예측
+pred_class <- predict(cv_lasso, newx=model.matrix(delay~., data=test)[,-7], s=lam, type="class")
+
+confusionMatrix(factor(pred_class, levels=c("ontime","delayed")),test$delay, positive="delayed")
+```
+
+<br/>
+
+#### 8-1. carrierDL, carrierMQ, carrierUS, deptime8, deptime10, deptime12, deptime13, deptime14, deptime15, deptime18, deptime19, originDCA, weather1, dayweek6, dayweek7 변수가 포함되어 있고 15개이다.
+
+#### 8-2. Accuracy:0.8377, Sensitivity: 0.15574, Specificity: 0.99619이다. ontime으로 예측한 것 중 523개가 실제 ontime으로 맞았고 103개가 실제 delayed로 틀렸다. delayed로 예측한 것 중에서 2개가 실제 ontime으로 틀렸고 19개가 실제 delayed로 맞았다.
+
+
+
+
+<br/>
+
+### 9. 6, 7, 8번에서 수립한 logistic regression model들에 대해서, test set에 대한 성능을 나타내는 ROC Curve를 하나의 그래프로 시각화하고, AUC값을 비교해 보자. 
+
+<br/>
+
+```{r graph9}
+#ROC곡선
+library(ROCR)
+pred1 <- prediction(p, test$delay, c("ontime","delayed"))
+perf1 <- performance(pred1, measure= "tpr", x.measure="fpr")
+
+pred2 <- prediction(prob_step, test$delay, c("ontime","delayed"))
+perf2 <- performance(pred2, measure= "tpr", x.measure="fpr")
+
+pred3 <- prediction(pred_prob, test$delay, c("ontime","delayed"))
+perf3 <- performance(pred3, measure= "tpr", x.measure="fpr")
+
+plot(perf1, col="blue", lwd=3)
+plot(perf2, col="red", lwd=3, add=TRUE)
+plot(perf3, col="green", lwd=3, add=TRUE)
+
+#compute AUC
+auc <- performance(pred1, measure = "auc")
+auc@y.values
+
+auc2 <- performance(pred2, measure = "auc")
+auc2@y.values
+
+auc3 <- performance(pred3, measure = "auc")
+auc3@y.values
+```
+
+<br/>
+
+#### 8번 모델이 가장 작은 AUC값을 가지고 7번 모델이 가장 큰 AUC값을 가진다. 하지만 3개의 모델의 AUC값이 차이가 유의미하게 난다고 볼 수 없으므로 3개의 모델 모두 비슷한 성능을 가진다고 볼 수 있다.
+Model          |AUC   
+---------------|---------
+6번 모델       |0.7388681    
+7번 모델       |0.7445355    
+8번 모델       |0.7284153    
+
+<br/>
+
+### 10. Training set을 대상으로 k-nn을 적용해보자. 이때 train() 함수를 사용한 cross validation으로 Accuracy가 가장 높은 best 값을 찾는다. 
+
+<br/>
+
+```{r graph10}
+#knn model
+set.seed(12)
+knn_model <- train(delay~., data=train, method="knn", trControl=trainControl(method="repeatedcv", number=10, repeats=5), tuneGrid = expand.grid(k=1:31))
+knn_model$results
+
+#knn그래프
+ggplot(knn_model)
+
+knn_model$bestTune
+
+#test set에 대한 confusion matrix
+test_pred_2 <- predict(knn_model, test)
+confusionMatrix(test_pred_2,test$delay,positive="delayed")
+```
+
+<br/>
+
+#### 10-1. best k값은 5이다.
+
+#### 10-2. Accuracy:0.83, Sensitivity: 0.17213, Specificity: 0.98286이다. ontime으로 예측한 것 중 실제 ontime인 것은 516개, 실제 delayed인 것은 101개이며 delayed로 예측한 것 중 실제 ontime인 것은 9개, 실제 delayed인 것은 21개이다.
+#### 앞서 수립한 logistic regression model들과 비교 했을 때 6번 모델 중 Threshold가 0.5인 모델이 Accuracy가 0.8485로 가장 높은 것을 볼 수 있고 knn model이 가장 낮은 것을 볼 수 있다. 하지만 6번 모델 중 Threshold가 0.5인 모델과 8번의 lasso model과 knn model의 Accuracy가 유의미한 차이가 난다고 보이지 않으므로 비슷한 Accuracy를 가진 모델이라 볼 수 있다. 
+Model                  |Accuracy   |Sensitivity |Specificity
+-----------------------|---------- |----------  |---------
+knn model              | 0.83      |0.17213     |0.98286
+Threshold(k=0.2)       | 0.7094    |0.6311      |0.7276
+Threshold(k=0.3)       | 0.7867    |0.4672      |0.8610 
+Threshold(k=0.5)       | 0.8485    |0.24590     |0.98857
+Threshold(k=0.7)       | 0.8377    |0.13934     |1.00000
+lasso model            | 0.8377    |0.15574     |0.99619
+
+
+
+<br/>
+
+## 2. OJ Dataset
+
+<br/>
+
+### SLR 패키지에 속해 있는 OJ 데이터셋은 Citrus Hill과 Minute Maid Orange Juice를 구매한 1,070명의 고객에 대한 정보를 포함한다. 고객 및 제품 정보를 담고 있는 17개의 feature를 사용하여 고객이 두 제품 중 어떤 것을 구매할지(Purchase 변수) 예측하는 모델을 SVM을 활용하여 만들어본다. Linear, RBF, Polynomial Kernel을 사용한 SVM 모델을 만들어보고 성능을 비교해보자. 어떤 SVM 모델이 가장 좋은 성능을 보이는가?
+
+<br/>
+
+```{r graph11}
+library(ISLR)
+str(OJ)
+
+#missing value 제거
+oj <- na.omit(OJ)
+str(oj)
+
+#taining, test set 나누기
+set.seed(123)
+library(rsample)
+split <- initial_split(oj, prop=0.5, strata = "Purchase")
+oj_train <- training(split)
+oj_test <- testing(split)
+
+
+library(e1071)
+#Linear kernel svm
+set.seed(123)
+l_tune.out <- tune(svm, Purchase~., data=oj_train, kernel = "linear", ranges = list(cost=10^seq(-3,3)))
+
+summary(l_tune.out)
+l_tune.out$best.parameters
+
+linear_bestmodel <- l_tune.out$best.model
+
+linear_pred <- predict(linear_bestmodel, oj_test)
+confusionMatrix(linear_pred, oj_test$Purchase)
+
+#RBF kernel svm
+set.seed(123)
+r_tune <- tune(svm, Purchase~., data=oj_train, kernel="radial", range=list(cost=c(0.01,0.1,1,10,100,1000),gamma=c(0.01,0.1,1,10,100)))
+
+summary(r_tune)
+
+#tuning 결과 시각화
+plot(r_tune)
+
+rbf_pred <- predict(r_tune$best.model,oj_test)
+confusionMatrix(rbf_pred, oj_test$Purchase)
+
+#Polynomial kernel svm
+set.seed(123)
+p_tune.out <- tune(svm, Purchase~.,data=oj_train, kernel="polynomial", ranges=list(cost=c(0.01,0.1,1,10,100), degree=c(2,3,4)))
+
+summary(p_tune.out)
+
+poly_pred <- predict(p_tune.out$best.model, oj_test)
+confusionMatrix(poly_pred, oj_test$Purchase)
+```
+
+<br/>
+
+#### Accuracy가 Linear kernel svm이 가장 높고 Polynomial kernel svm이 가장 낮은 것을 볼 수 있다. 하지만 세 개의 모델 모두 Accuracy의 차이가 유의미하다고 볼 수 없을 정도로 큰 차이를 보이지는 않으므로 비슷한 성능을 가진다고 볼 수 있다.
+Model                  |Accuracy   |Sensitivity |Specificity
+-----------------------|---------- |----------  |---------
+Linear kernel svm      | 0.8296    |0.8957      |0.7260
+RBF kernel svm         | 0.8202    |0.8773      |0.7308
+Polynomial kernel svm  | 0.8015    |0.8374      |0.7452 
+
+

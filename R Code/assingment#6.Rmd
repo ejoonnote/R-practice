@@ -1,0 +1,314 @@
+---
+title: "Assingmet6"
+author: "LeeJoon Jeon"
+output:
+  html_document: 
+    highlight: pygments
+  pdf_document: default
+---
+<br/>
+
+###
+
+<br/>
+
+## Sentiment Analysis on Twitter Dataset
+
+<br/>
+
+### 1. 모델을 수립하기 전에 데이터의 특성을 분석한다. 시각화 도구를 적절히 활용하자.
+```{r message=FALSE}
+setwd('/Users/Administrator/Desktop/데분')
+library(ggplot2)
+library(wordcloud)
+library(tm)
+library(SnowballC)
+library(rsample)
+library(caret)
+library(e1071)
+library(rpart)
+library(rpart.plot)
+library(randomForest)
+library(nnet)
+```
+
+
+
+```{r graph1}
+#데이터 가져오기
+tw <- read.csv("Tweets.csv", stringsAsFactors = FALSE, encoding = "UTF-8")
+str(tw)
+table(tw$airline_sentiment)
+table(tw$airline)
+table(tw$negativereason)
+
+
+#긍정,부정,중립 내용
+ggplot(tw, aes(x=airline_sentiment)) + geom_bar() + theme_bw()
+
+#항공사별 평가
+ggplot(tw,aes(x=airline,fill=airline_sentiment)) + geom_bar(position = position_dodge(preserve = "single")) + scale_fill_brewer(palette = "Set2")
+
+#평가가 negative인 이유 수
+ggplot(tw, aes(x=negativereason)) + geom_bar() + theme(axis.text.x = element_text(angle = 45,hjust = 1))
+
+```
+
+<br/>
+
+
+#### 항공사에 대해 부정적인 내용이 가장 많았고 긍정적인 내용이 가장 적었다. 항공사에 대해 평가에서 American, United, US Airways 항공사에 대한 의견은 부정적인 의견이 압도적으로 많았다. Delta, Southwest 항공사는 부정적인 의견이 많지만 중립적인 의견과 긍정적인 의견과 큰 차이가 나지 않았다. Virgin America 항공사는 세 가지 의견이 비슷하게 나타난다. 
+
+#### 부정적인 이유로는 Customer servic issue가 높은 비율로 나왔고 그 뒤로 Lagte Flight, Can't Tell이 있다. 그리고 아무런 이유를 제시하지 않은 경우가 가장 많았다.
+
+
+<br/>
+
+
+
+<br/>
+
+```{r graph2}
+#필요없는 features 제거
+tw <- tw[,-1]
+tw <- tw[,-2:-9]
+tw <- tw[,-3:-6]
+str(tw)
+
+#factor화
+tw$airline_sentiment <- factor(tw$airline_sentiment)
+
+# negative, positive, neutral text 분리
+neg <- subset(tw, airline_sentiment == "negative")
+pos <- subset(tw, airline_sentiment == "positive")
+neut <- subset(tw, airline_sentiment == "neutral")
+
+#wordcloud 생성
+wordcloud(neg$text, max.words = 20, colors = brewer.pal(8, "Dark2"))
+wordcloud(pos$text, max.words=20, colors = brewer.pal(8, "Dark2"))
+wordcloud(neut$text, max.words=20, colors = brewer.pal(8, "Dark2"))
+```
+
+<br/>
+
+#### 부정적인 내용에서는 cant, delayed, cancelled등의 단어가 많이 나오는 것을 볼 수 있다.
+
+#### 긍정적인 내용에서는 great,best,love,good 등의 단어가 많이 나온다.
+
+#### 중립적인 내용에서는 need, pleas, canr 등의 단어가 많이 나온다.
+
+
+<br/>
+
+### 2.텍스트 데이터에 bag-of-words 기법을 적용하기 위해 적절한 preprocessing을 수행하고, 그 결과를 분석해보자
+
+<br/>
+
+```{r graph3}
+#corpus 생성
+tw_corpus <- VCorpus(VectorSource(tw$text))
+tw_corpus
+
+#300번째 document 확인
+inspect(tw_corpus[[300]])
+tw_corpus[[300]]$content
+
+
+#대문자를 소문자로 변환
+tw_corpus_clean <- tm_map(tw_corpus, content_transformer(tolower))
+tw_corpus_clean[[300]]$content
+
+#숫자 제거
+tw_corpus_clean <- tm_map(tw_corpus_clean, removeNumbers)
+
+#stopword 츨력
+stopwords()
+
+#stopword 제거
+tw_corpus_clean <- tm_map(tw_corpus_clean, removeWords, stopwords())
+tw_corpus_clean[[300]]$content
+
+#문장부호 제거
+tw_corpus_clean <- tm_map(tw_corpus_clean, removePunctuation)
+tw_corpus_clean[[300]]$content
+
+#stemming
+tw_corpus_clean <- tm_map(tw_corpus_clean, stemDocument)
+tw_corpus_clean[[300]]$content
+
+#공백제거
+tw_corpus_clean <- tm_map(tw_corpus_clean, stripWhitespace)
+tw_corpus_clean[[300]]$content
+
+#document-term matrix
+tw_dtm <- DocumentTermMatrix(tw_corpus_clean)
+tw_dtm
+inspect(tw_dtm)
+
+#TF-IDF
+tw_tfidf <- weightTfIdf(tw_dtm)
+inspect(tw_tfidf[1:5,])
+
+#전체 document에서 0.5%미만의 document에서 발생하는 단어 제외
+tw_dtm2 <- removeSparseTerms(tw_dtm, 0.995)
+tw_dtm2
+
+#documnet-trem matrix를 데이터 프레임으로 변환
+tw_frame <- data.frame(as.matrix(tw_dtm2))
+
+#feature의 이름을 적당한 형태로 조정
+colnames(tw_frame) <- make.names(colnames(tw_frame))
+
+#target variable 추가
+tw_frame$airline_sentiment <- tw$airline_sentiment
+```
+
+<br/>
+
+#### 전체 document에서 0.5%미만의 document에서 발생하는 단어 제외했더니 단어 수가 11274개에서 330개로 감소했다.
+
+<br/>
+
+### 3. 계산시간을 줄이기 위해서 첫 5,000개의 데이터만 training set으로 사용하고, 나머지 모든 데이터를 test set으로 사용한다. Training set을 사용하여 predictive model을 만들어보자. 
+
+<br/>
+
+#### A. 지금까지 학습한 모델을 최대한 활용해보고, 분석 과정과 결과를 report하자. 사용하는 모델, 모델에 포함되는 파라미터에 대한 튜닝, 모델에 포함되는 feature의 수, DTM/TF-IDF 사용 여부 등이 classification accuracy에 영향을 미칠 수 있다.
+[주의: 모델을 수립할 때에는 test set을 사용하여 성능을 비교할 수 없다.]
+
+<br/>
+
+```{r graph4}
+#train, test set 분할
+train <- tw_frame[1:5000,]
+test <- tw_frame[-1:-5000,]
+
+
+set.seed(123)
+#train, validaion set 분할
+split <- initial_split(train, prop = 0.8, strata = "airline_sentiment")
+train <- training(split)
+validation <- testing(split)
+
+#svm model
+set.seed(12)
+svm_m <- tune(svm, airline_sentiment ~., data=train, kernel = "radial", ranges=list(cost=c(0.01,0.1,1,10,100,1000), gamma = c(0.01,0.1,1,10,100)))
+summary(svm_m)
+
+#validation set에 대한 예측 및 confusionmatrix
+pred <- predict(svm_m$best.model, newdata = validation)
+confusionMatrix(pred, validation$airline_sentiment)
+
+#classification tree
+set.seed(13)
+ct_m <- rpart(airline_sentiment ~., data=train, method="class", control=list(cp=0))
+rpart.plot(ct_m)
+printcp(ct_m)
+
+#cv error가 가장 낮을 때의 cp값
+best_cp <- ct_m$cptable[which.min(ct_m$cptable[,"xerror"]),"CP"]
+
+#best cp 일 때 pruned tree생성
+best_ct <- prune(ct_m, cp=best_cp)
+rpart.plot(best_ct)
+
+#validation set에 대한 예측 및 confusionmatrix
+pred_prob <- predict(best_ct, newdata = validation, type = "prob")
+pred_class <- predict(best_ct, newdata=validation, type = "class")
+confusionMatrix(factor(pred_class),validation$airline_sentiment)
+
+
+#bagging model
+set.seed(14)
+bag <- randomForest(airline_sentiment ~ ., data = train, mtry = ncol(train)-1)
+bag
+#train set 에 대한 confusion
+bag$confusion
+
+#bagging model의 validation set에 대한 예측 
+pred_bag <- predict(bag, newdata = validation, type = "class")
+confusionMatrix(pred_bag,validation$airline_sentiment)
+
+
+#random foerest model
+set.seed(15)
+rf_m <- randomForest(airline_sentiment~., data = train)
+
+#train set에 대한 confusion matrix
+rf_m$confusion
+
+#random forest model에서 validation set에 대한 예측
+pred_rf <- predict(rf_m, newdata = validation, type = "class")
+confusionMatrix(pred_rf, validation$airline_sentiment)
+
+
+#multinorm logistic model
+mlogit_m <- multinom(airline_sentiment ~., data=train)
+summary(mlogit_m)
+
+
+#validation set에 대한 예측 및 confusionmatrix
+pred_ml <- predict(mlogit_m, newdata = validation, type = "class")
+confusionMatrix(pred_ml, validation$airline_sentiment)
+```
+
+<br/>
+
+
+#### Accuracy를 비교해 보면 사용한 model들의 Accuracy가 70%가 넘는 것을 볼 수 있다. 이중 SVM model이 가장 높은 Accuracy를 보여준다.
+model    |svm    | tree  |bagging |random forest |다항로지스틱
+---------|-------|-------|--------|--------------|---------
+Accuracy |0.7515 |0.7014 |0.7084  |0.7325        | 0.7395  
+
+
+#### 각 model에서 각 class(negive, neutral, positive)별로 분류가 정확한지 따져보면 모든 model에서 negative, positive, neutral 순으로 분류가 정확한다것을 알 수 있다.
+model       |svm    | tree  |bagging |random forest |다항로지스틱
+------------|-------|-------|--------|--------------|---------
+Sensitivity |0.9296 |0.9136 |0.8400  |0.8928        | 0.8528
+(negative)  |
+
+model       |svm     | tree  |bagging  |random forest |다항로지스틱
+------------|--------|-------|---------|--------------|---------
+Sensitivity |0.38389 |0.26066 |0.42180 |0.40758       | 0.5261
+(neutral)   |
+
+model       |svm     | tree   |bagging  |random forest |다항로지스틱
+------------|--------|--------|---------|--------------|---------
+Sensitivity |0.54321 |0.45679 |0.57407  |0.53704       | 0.58025
+(positive)  |
+
+
+
+
+<br/>
+
+### B.최종적으로 선택한 모델은 무엇이며 test set에 대한 accuracy는 얼마인가?
+
+<br/>
+
+```{r graph5}
+#svm model선택
+#test set에 대한 예측
+pred_svm <- predict(svm_m$best.model, newdata = test)
+confusionMatrix(pred_svm, test$airline_sentiment)
+```
+<br/>
+
+#### Accuracy가 가장 높은 SVM model을 최종적으로 선택했고 test set에 대한 Acㅊuracy는 0.732가 나왔다. 기대한 Accuracy보다 낮은 70%대로 나왔는데 이는 계산시간을 고려하여 임의로 training set을 줄였기 때문으로 예상된다. 만약에 training set에 더 많은 data를 사용했다면 지금 나온 Accuracy보다 더 높은 결과를 얻을 수 있었을 것으로 생각되며 임의로 줄인 data를 가지고 0.732라는 Accuracy가 나온 것은 충분히 높은 Accuracy라고 생각된다.
+
+<br/>
+
+### C. 세 class (positive, negative, neutral) 중에서 어떤 class를 분류하기 어려운가?
+
+
+<br/>
+
+#### 이전 문제에서 negative, neural, positive 순으로 분류가 잘된다고 했는데 최종 적으로 선택한 svm model에서 test set에 대한 confusionmatrix에서도 negative, positive, neutral순으로 잘 분류 되어진다.
+
+Sensitivity |negative |neutral  |positive
+------------|---------|---------|--------
+SVM         |  0.8613 | 0.46180 |0.58323
+
+
+
+
