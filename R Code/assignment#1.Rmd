@@ -1,6 +1,6 @@
 ---
 title: "Assingmet1"
-author: "LeeJoon Jeon"
+author: 
 output:
   html_document: 
     highlight: pygments
